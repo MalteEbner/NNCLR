@@ -11,6 +11,7 @@ class NNmemoryBankModule(MemoryBankModule):
                 labels: torch.Tensor = None,
                 update: bool = False):
         output, bank = super(NNmemoryBankModule, self).forward(output, labels, update)
+        bank = bank.to(output.device).t()
         similarity_matrix = torch.einsum("nd,md->nm", output, bank)
         index_nearest_neighbours = torch.argmax(similarity_matrix, dim=1)
         nearest_neighbours = torch.index_select(bank, dim=0, index=index_nearest_neighbours)
