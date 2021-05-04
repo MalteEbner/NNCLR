@@ -6,6 +6,7 @@ import numpy as np
 import pytorch_lightning as pl
 import lightly
 
+from source.loss_with_nn import LossWithNN
 from source.model_with_nn import ModuleWithNN
 
 num_workers = 0
@@ -178,23 +179,24 @@ class SimSiamModel(BenchmarkModule):
             nn.AdaptiveAvgPool2d(1),
         )
         # create a simsiam model based on ResNet
-        model = lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
-        model = ModuleWithNN(model, nn_memory_bank_size=2 ** 8)
-        self.resnet_simsiam_with_nn = model
-        self.criterion = lightly.loss.SymNegCosineSimilarityLoss()
+        self.resnet_simsiam = \
+            lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
+        loss = lightly.loss.SymNegCosineSimilarityLoss()
+        loss = LossWithNN(base_loss=loss, nn_memory_bank_size=2**8)
+        self.criterion = loss
 
     def forward(self, x):
-        self.resnet_simsiam_with_nn(x)
+        self.resnet_simsiam(x)
 
     def training_step(self, batch, batch_idx):
         (x0, x1), _, _ = batch
-        x0, x1 = self.resnet_simsiam_with_nn(x0, x1)
+        x0, x1 = self.resnet_simsiam(x0, x1)
         loss = self.criterion(x0, x1)
         self.log('train_loss_ssl', loss)
         return loss
 
     def configure_optimizers(self):
-        optim = torch.optim.SGD(self.resnet_simsiam_with_nn.parameters(), lr=6e-2,
+        optim = torch.optim.SGD(self.resnet_simsiam.parameters(), lr=6e-2,
                                 momentum=0.9, weight_decay=5e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, max_epochs)
         return [optim], [scheduler]
