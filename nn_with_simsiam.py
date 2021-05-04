@@ -6,14 +6,12 @@ import numpy as np
 import pytorch_lightning as pl
 import lightly
 
-from source.ModuleWithNN import ModuleWithNN
-
-num_workers = 0
-max_epochs = 2
+num_workers = 8
+max_epochs = 800
 knn_k = 200
 knn_t = 0.1
 classes = 10
-batch_size = 256
+batch_size = 512
 seed = 1
 
 pl.seed_everything(seed)
@@ -35,19 +33,19 @@ test_transforms = torchvision.transforms.Compose([
         std=lightly.data.collate.imagenet_normalize['std'],
     )
 ])
-root_dir = '/_unprotected/datasets/cifar10'
+
 dataset_train_ssl = lightly.data.LightlyDataset.from_torch_dataset(
     torchvision.datasets.CIFAR10(
-        root=root_dir,
-        train=False,
+        root='data',
+        train=True,
         download=True))
 dataset_train_kNN = lightly.data.LightlyDataset.from_torch_dataset(torchvision.datasets.CIFAR10(
-    root=root_dir,
-    train=False,
+    root='data',
+    train=True,
     transform=test_transforms,
     download=True))
 dataset_test = lightly.data.LightlyDataset.from_torch_dataset(torchvision.datasets.CIFAR10(
-    root=root_dir,
+    root='data',
     train=False,
     transform=test_transforms,
     download=True))
@@ -178,23 +176,22 @@ class SimSiamModel(BenchmarkModule):
             nn.AdaptiveAvgPool2d(1),
         )
         # create a simsiam model based on ResNet
-        model = lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
-        model = ModuleWithNN(model, nn_memory_bank_size=2 ** 8)
-        self.resnet_simsiam_with_nn = model
+        self.resnet_simsiam = \
+            lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
         self.criterion = lightly.loss.SymNegCosineSimilarityLoss()
 
     def forward(self, x):
-        self.resnet_simsiam_with_nn(x)
+        self.resnet_simsiam(x)
 
     def training_step(self, batch, batch_idx):
         (x0, x1), _, _ = batch
-        x0, x1 = self.resnet_simsiam_with_nn(x0, x1)
+        x0, x1 = self.resnet_simsiam(x0, x1)
         loss = self.criterion(x0, x1)
         self.log('train_loss_ssl', loss)
         return loss
 
     def configure_optimizers(self):
-        optim = torch.optim.SGD(self.resnet_simsiam_with_nn.parameters(), lr=6e-2,
+        optim = torch.optim.SGD(self.resnet_simsiam.parameters(), lr=6e-2,
                                 momentum=0.9, weight_decay=5e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, max_epochs)
         return [optim], [scheduler]
@@ -202,7 +199,7 @@ class SimSiamModel(BenchmarkModule):
 
 model = SimSiamModel(dataloader_train_kNN)
 trainer = pl.Trainer(max_epochs=max_epochs, gpus=gpus,
-                     progress_bar_refresh_rate=20)
+                     progress_bar_refresh_rate=100)
 trainer.fit(
     model,
     train_dataloader=dataloader_train_ssl,
