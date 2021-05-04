@@ -2,12 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-import numpy as np
 import pytorch_lightning as pl
 import lightly
 
-from source.loss_with_nn import LossWithNN
-from source.model_with_nn import ModuleWithNN
+from source.nn_memory_bank import NNmemoryBankModule
 
 num_workers = 0
 max_epochs = 2
@@ -37,6 +35,7 @@ test_transforms = torchvision.transforms.Compose([
     )
 ])
 root_dir = '/_unprotected/datasets/cifar10'
+root_dir = '/Users/malteebnerlightly/Documents/datasets/cifar10'
 dataset_train_ssl = lightly.data.LightlyDataset.from_torch_dataset(
     torchvision.datasets.CIFAR10(
         root=root_dir,
@@ -181,9 +180,9 @@ class SimSiamModel(BenchmarkModule):
         # create a simsiam model based on ResNet
         self.resnet_simsiam = \
             lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
-        loss = lightly.loss.SymNegCosineSimilarityLoss()
-        loss = LossWithNN(base_loss=loss, nn_memory_bank_size=2**8)
-        self.criterion = loss
+        loss_function = lightly.loss.SymNegCosineSimilarityLoss()
+        self.criterion = loss_function
+        self.nn_replacer = NNmemoryBankModule()
 
     def forward(self, x):
         self.resnet_simsiam(x)
@@ -191,6 +190,7 @@ class SimSiamModel(BenchmarkModule):
     def training_step(self, batch, batch_idx):
         (x0, x1), _, _ = batch
         x0, x1 = self.resnet_simsiam(x0, x1)
+        x0 = (torch.nn.functional.normalize(tuple_element, dim=1) for tuple_element in x0)
         loss = self.criterion(x0, x1)
         self.log('train_loss_ssl', loss)
         return loss
@@ -204,7 +204,7 @@ class SimSiamModel(BenchmarkModule):
 
 model = SimSiamModel(dataloader_train_kNN)
 trainer = pl.Trainer(max_epochs=max_epochs, gpus=gpus,
-                     progress_bar_refresh_rate=20)
+                     progress_bar_refresh_rate=1)
 trainer.fit(
     model,
     train_dataloader=dataloader_train_ssl,
