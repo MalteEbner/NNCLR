@@ -12,7 +12,7 @@ max_epochs = 800
 knn_k = 200
 knn_t = 0.1
 classes = 10
-batch_size = 512
+batch_size = 500
 seed = 1
 
 pl.seed_everything(seed)
@@ -190,16 +190,16 @@ class SimSiamModel(BenchmarkModule):
         self.resnet_simsiam(x)
 
     def training_step(self, batch, batch_idx):
-        (x0, x1), _, _ = batch
-        out0, out1 = self.resnet_simsiam(x0, x1)
-        if self.current_epoch > 50:
-            z0, p0 = out0
+        (x1, x2), _, _ = batch
+        out1, out2 = self.resnet_simsiam(x1, x2)
+        if self.current_epoch > 51:
             z1, p1 = out1
-            z0 = self.nn_replacer(z0)
+            z2, p2 = out2
+            z2 = self.nn_replacer(z2, update=False)
             z1 = self.nn_replacer(z1)
-            out0 = (z0, p0)
             out1 = (z1, p1)
-        loss = self.criterion(out0, out1)
+            out2 = (z2, p2)
+        loss = self.criterion(out1, out2)
         self.log('train_loss_ssl', loss)
         return loss
 
