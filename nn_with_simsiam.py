@@ -7,7 +7,7 @@ import lightly
 
 from source.nn_memory_bank import NNmemoryBankModule
 
-num_workers = 8
+num_workers = 4
 max_epochs = 800
 knn_k = 200
 knn_t = 0.1
@@ -194,9 +194,11 @@ class SimSiamModel(BenchmarkModule):
         out0, out1 = self.resnet_simsiam(x0, x1)
         if self.current_epoch > 50:
             z0, p0 = out0
+            z1, p1 = out1
             z0 = self.nn_replacer(z0)
-            p0 = self.nn_replacer(p0)
+            z1 = self.nn_replacer(z1)
             out0 = (z0, p0)
+            out1 = (z1, p1)
         loss = self.criterion(out0, out1)
         self.log('train_loss_ssl', loss)
         return loss
