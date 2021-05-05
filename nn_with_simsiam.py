@@ -12,7 +12,7 @@ max_epochs = 800
 knn_k = 200
 knn_t = 0.1
 classes = 10
-batch_size = 500
+batch_size = 512
 seed = 1
 
 pl.seed_everything(seed)
@@ -35,22 +35,22 @@ test_transforms = torchvision.transforms.Compose([
     )
 ])
 root_dir = '/_unprotected/datasets/stl10'
-#root_dir = '/Users/malteebnerlightly/Documents/datasets/cifar10'
-base_torchvision_dataset = torchvision.datasets.STL10
+root_dir = '/_unprotected/datasets/cifar10'
+base_torchvision_dataset = torchvision.datasets.CIFAR10
 
 dataset_train_ssl = lightly.data.LightlyDataset.from_torch_dataset(
     base_torchvision_dataset(
         root=root_dir,
-        split="train",
+        train=True,
         download=True))
 dataset_train_kNN = lightly.data.LightlyDataset.from_torch_dataset(base_torchvision_dataset(
     root=root_dir,
-    split="train",
+    train=True,
     transform=test_transforms,
     download=True))
 dataset_test = lightly.data.LightlyDataset.from_torch_dataset(base_torchvision_dataset(
     root=root_dir,
-    split="test",
+    train=False,
     transform=test_transforms,
     download=True))
 
