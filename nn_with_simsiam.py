@@ -22,7 +22,7 @@ gpus = 1 if torch.cuda.is_available() else 0
 
 # Use SimCLR augmentations, additionally, disable blur
 collate_fn = lightly.data.SimCLRCollateFunction(
-    input_size=32,
+    input_size=96,
     gaussian_blur=0.,
 )
 
@@ -192,10 +192,11 @@ class SimSiamModel(BenchmarkModule):
     def training_step(self, batch, batch_idx):
         (x0, x1), _, _ = batch
         out0, out1 = self.resnet_simsiam(x0, x1)
-        z0, p0 = out0
-        z0 = self.nn_replacer(z0)
-        p0 = self.nn_replacer(p0)
-        out0 = (z0, p0)
+        if self.current_epoch > 50:
+            z0, p0 = out0
+            z0 = self.nn_replacer(z0)
+            p0 = self.nn_replacer(p0)
+            out0 = (z0, p0)
         loss = self.criterion(out0, out1)
         self.log('train_loss_ssl', loss)
         return loss
