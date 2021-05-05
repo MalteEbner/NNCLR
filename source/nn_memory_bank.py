@@ -22,4 +22,4 @@ class NNmemoryBankModule(MemoryBankModule):
         index_nearest_neighbours = torch.argmax(similarity_matrix, dim=1)
         nearest_neighbours = torch.index_select(bank, dim=0, index=index_nearest_neighbours)
 
-        return nearest_neighbours, bank
+        return nearest_neighbours

@@ -7,12 +7,12 @@ import lightly
 
 from source.nn_memory_bank import NNmemoryBankModule
 
-num_workers = 0
-max_epochs = 2
+num_workers = 8
+max_epochs = 800
 knn_k = 200
 knn_t = 0.1
 classes = 10
-batch_size = 256
+batch_size = 512
 seed = 1
 
 pl.seed_everything(seed)
@@ -34,21 +34,23 @@ test_transforms = torchvision.transforms.Compose([
         std=lightly.data.collate.imagenet_normalize['std'],
     )
 ])
-root_dir = '/_unprotected/datasets/cifar10'
-root_dir = '/Users/malteebnerlightly/Documents/datasets/cifar10'
+root_dir = '/_unprotected/datasets/stl10'
+#root_dir = '/Users/malteebnerlightly/Documents/datasets/cifar10'
+base_torchvision_dataset = torchvision.datasets.STL10
+
 dataset_train_ssl = lightly.data.LightlyDataset.from_torch_dataset(
-    torchvision.datasets.CIFAR10(
+    base_torchvision_dataset(
         root=root_dir,
-        train=False,
+        split="train",
         download=True))
-dataset_train_kNN = lightly.data.LightlyDataset.from_torch_dataset(torchvision.datasets.CIFAR10(
+dataset_train_kNN = lightly.data.LightlyDataset.from_torch_dataset(base_torchvision_dataset(
     root=root_dir,
-    train=False,
+    split="train",
     transform=test_transforms,
     download=True))
-dataset_test = lightly.data.LightlyDataset.from_torch_dataset(torchvision.datasets.CIFAR10(
+dataset_test = lightly.data.LightlyDataset.from_torch_dataset(base_torchvision_dataset(
     root=root_dir,
-    train=False,
+    split="test",
     transform=test_transforms,
     download=True))
 
@@ -172,7 +174,7 @@ class SimSiamModel(BenchmarkModule):
     def __init__(self, dataloader_kNN):
         super().__init__(dataloader_kNN)
         # create a ResNet backbone and remove the classification head
-        resnet = lightly.models.ResNetGenerator('resnet-18')
+        resnet = torchvision.models.resnet18()
         self.backbone = nn.Sequential(
             *list(resnet.children())[:-1],
             nn.AdaptiveAvgPool2d(1),
@@ -189,9 +191,12 @@ class SimSiamModel(BenchmarkModule):
 
     def training_step(self, batch, batch_idx):
         (x0, x1), _, _ = batch
-        x0, x1 = self.resnet_simsiam(x0, x1)
-        x0 = (torch.nn.functional.normalize(tuple_element, dim=1) for tuple_element in x0)
-        loss = self.criterion(x0, x1)
+        out0, out1 = self.resnet_simsiam(x0, x1)
+        z0, p0 = out0
+        z0 = self.nn_replacer(z0)
+        p0 = self.nn_replacer(p0)
+        out0 = (z0, p0)
+        loss = self.criterion(out0, out1)
         self.log('train_loss_ssl', loss)
         return loss
 
@@ -204,7 +209,7 @@ class SimSiamModel(BenchmarkModule):
 
 model = SimSiamModel(dataloader_train_kNN)
 trainer = pl.Trainer(max_epochs=max_epochs, gpus=gpus,
-                     progress_bar_refresh_rate=1)
+                     progress_bar_refresh_rate=200)
 trainer.fit(
     model,
     train_dataloader=dataloader_train_ssl,
