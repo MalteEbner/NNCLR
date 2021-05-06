@@ -6,9 +6,10 @@ import pytorch_lightning as pl
 import lightly
 
 from source.nn_memory_bank import NNmemoryBankModule
+from nnclr_model import NNCLR
 
-num_workers = 4
-max_epochs = 800
+num_workers = 12
+max_epochs = 200
 knn_k = 200
 knn_t = 0.1
 classes = 10
@@ -22,7 +23,7 @@ gpus = 1 if torch.cuda.is_available() else 0
 
 # Use SimCLR augmentations, additionally, disable blur
 collate_fn = lightly.data.SimCLRCollateFunction(
-    input_size=96,
+    input_size=32,
     gaussian_blur=0.,
 )
 
@@ -35,7 +36,7 @@ test_transforms = torchvision.transforms.Compose([
     )
 ])
 root_dir = '/_unprotected/datasets/stl10'
-root_dir = '/_unprotected/datasets/cifar10'
+root_dir = '/datasets/cifar10'
 base_torchvision_dataset = torchvision.datasets.CIFAR10
 
 dataset_train_ssl = lightly.data.LightlyDataset.from_torch_dataset(
@@ -184,7 +185,7 @@ class SimSiamModel(BenchmarkModule):
             lightly.models.SimSiam(self.backbone, num_ftrs=512, num_mlp_layers=2)
         loss_function = lightly.loss.SymNegCosineSimilarityLoss()
         self.criterion = loss_function
-        self.nn_replacer = NNmemoryBankModule()
+        self.nn_replacer = NNmemoryBankModule(size=2 ** 16)
 
     def forward(self, x):
         self.resnet_simsiam(x)
@@ -192,14 +193,12 @@ class SimSiamModel(BenchmarkModule):
     def training_step(self, batch, batch_idx):
         (x1, x2), _, _ = batch
         out1, out2 = self.resnet_simsiam(x1, x2)
-        if self.current_epoch > 51:
-            z1, p1 = out1
-            z2, p2 = out2
-            z2 = self.nn_replacer(z2, update=False)
-            z1 = self.nn_replacer(z1)
-            out1 = (z1, p1)
-            out2 = (z2, p2)
-        loss = self.criterion(out1, out2)
+        z1, p1 = out1
+        z2, p2 = out2
+        z1_nn = self.nn_replacer(z1.detach(), update=True)
+        z2_nn = self.nn_replacer(z2.detach(), update=True)
+        loss = 0.5 * \
+            (self.criterion((z1_nn, p1), (z2, p2)) + self.criterion((z1, p1), (z2_nn, p2)))
         self.log('train_loss_ssl', loss)
         return loss
 
@@ -209,8 +208,40 @@ class SimSiamModel(BenchmarkModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, max_epochs)
         return [optim], [scheduler]
 
+class NNCLRModel(BenchmarkModule):
+    def __init__(self, dataloader_kNN):
+        super().__init__(dataloader_kNN)
+        # create a ResNet backbone and remove the classification head
+        resnet = lightly.models.ResNetGenerator('resnet-18')
+        self.backbone = nn.Sequential(
+            *list(resnet.children())[:-1],
+            nn.AdaptiveAvgPool2d(1),
+        )
+        # create a nnclr model based on ResNet
+        self.resnet_nnclr = \
+            NNCLR(self.backbone, num_ftrs=512)
+        self.criterion = lightly.loss.NTXentLoss()
+        self.nn_replacer = NNmemoryBankModule(size=2 ** 16)
+            
+    def forward(self, x):
+        self.resnet_nnclr(x)
 
-model = SimSiamModel(dataloader_train_kNN)
+    def training_step(self, batch, batch_idx):
+        (x0, x1), _, _ = batch
+        (z0, p0), (z1, p1) = self.resnet_nnclr(x0, x1)
+        z0 = self.nn_replacer(z0.detach(), update=False)
+        z1 = self.nn_replacer(z1.detach(), update=True)
+        loss = 0.5 * (self.criterion(z0, p1) + self.criterion(z1, p0))
+        self.log('train_loss_ssl', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optim = torch.optim.SGD(self.resnet_nnclr.parameters(), lr=6e-2,
+                                momentum=0.9, weight_decay=5e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, max_epochs)
+        return [optim], [scheduler]
+
+model = NNCLRModel(dataloader_train_kNN)
 trainer = pl.Trainer(max_epochs=max_epochs, gpus=gpus,
                      progress_bar_refresh_rate=200)
 trainer.fit(
