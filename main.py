@@ -9,7 +9,7 @@ from source.nn_memory_bank import NNmemoryBankModule
 from nnclr_model import NNCLR
 
 num_workers = 12
-max_epochs = 200
+max_epochs = 800
 knn_k = 200
 knn_t = 0.1
 classes = 10
@@ -219,7 +219,7 @@ class NNCLRModel(BenchmarkModule):
         )
         # create a nnclr model based on ResNet
         self.resnet_nnclr = \
-            NNCLR(self.backbone, num_ftrs=512)
+            NNCLR(self.backbone, num_ftrs=512, num_mlp_layers=2)
         self.criterion = lightly.loss.NTXentLoss()
         self.nn_replacer = NNmemoryBankModule(size=2 ** 16)
             

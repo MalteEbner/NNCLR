@@ -41,17 +41,28 @@ def _prediction_mlp(in_dims: int,
     prediction = nn.Sequential(l1, l2)
     return prediction
 
-def _get_nnclr_projection_head(num_ftrs: int, out_dim: int):
+def _get_nnclr_projection_head(num_ftrs: int, h_dims: int, out_dim: int, num_layers: int=3):
     """Returns a 2-layer projection head.
     """
-    modules = [
-        nn.Linear(num_ftrs, num_ftrs),
-        nn.BatchNorm1d(num_ftrs),
-        nn.ReLU(),
-        nn.Linear(num_ftrs, out_dim),
-        nn.BatchNorm1d(out_dim),
-    ]
-    return nn.Sequential(*modules)
+    l1 = nn.Sequential(nn.Linear(num_ftrs, h_dims),
+                       nn.BatchNorm1d(h_dims),
+                       nn.ReLU(inplace=True))
+
+    l2 = nn.Sequential(nn.Linear(h_dims, h_dims),
+                       nn.BatchNorm1d(h_dims),
+                       nn.ReLU(inplace=True))
+
+    l3 = nn.Sequential(nn.Linear(h_dims, out_dim),
+                       nn.BatchNorm1d(out_dim))
+
+    if num_layers == 3:
+        projection = nn.Sequential(l1, l2, l3)
+    elif num_layers == 2:
+        projection = nn.Sequential(l1, l3)
+    else:
+        raise NotImplementedError("Only MLPs with 2 and 3 layers are implemented.")
+
+    return projection
 
 
 class NNCLR(nn.Module):
@@ -74,14 +85,17 @@ class NNCLR(nn.Module):
     def __init__(self,
                  backbone: nn.Module,
                  num_ftrs: int = 512,
-                 out_dim: int = 128):
+                 proj_hidden_dim: int = 2048,
+                 pred_hidden_dim: int = 4096,
+                 out_dim: int = 256,
+                 num_mlp_layers: int = 3):
 
         super(NNCLR, self).__init__()
 
         self.backbone = backbone
-        self.projection_head = _get_nnclr_projection_head(num_ftrs, out_dim)
+        self.projection_head = _get_nnclr_projection_head(num_ftrs, proj_hidden_dim, out_dim, num_mlp_layers)
         self.prediction_head = \
-            _prediction_mlp(num_ftrs, 512, out_dim)
+            _prediction_mlp(num_ftrs, pred_hidden_dim, out_dim)
 
     def forward(self,
                 x0: torch.Tensor,
