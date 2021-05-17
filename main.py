@@ -9,7 +9,7 @@ from source.nn_memory_bank import NNmemoryBankModule
 from nnclr_model import NNCLR
 
 num_workers = 12
-max_epochs = 800
+max_epochs = 200
 knn_k = 200
 knn_t = 0.1
 classes = 10
@@ -193,12 +193,11 @@ class SimSiamModel(BenchmarkModule):
     def training_step(self, batch, batch_idx):
         (x1, x2), _, _ = batch
         out1, out2 = self.resnet_simsiam(x1, x2)
-        z1, p1 = out1
-        z2, p2 = out2
-        z1_nn = self.nn_replacer(z1.detach(), update=True)
-        z2_nn = self.nn_replacer(z2.detach(), update=True)
-        loss = 0.5 * \
-            (self.criterion((z1_nn, p1), (z2, p2)) + self.criterion((z1, p1), (z2_nn, p2)))
+        z0, p0 = out1
+        z1, p1 = out2
+        z0 = self.nn_replacer(z0.detach(), update=False)
+        z1 = self.nn_replacer(z1.detach(), update=True)
+        self.criterion((z0, p0), (z1, p1))
         self.log('train_loss_ssl', loss)
         return loss
 
@@ -219,8 +218,12 @@ class NNCLRModel(BenchmarkModule):
         )
         # create a nnclr model based on ResNet
         self.resnet_nnclr = \
-            NNCLR(self.backbone, num_ftrs=512, num_mlp_layers=2)
-        self.criterion = lightly.loss.NTXentLoss()
+            NNCLR(self.backbone, 
+            num_ftrs=512, 
+            num_mlp_layers=2, 
+            proj_hidden_dim=2048,
+            pred_hidden_dim=512)
+        self.criterion = lightly.loss.NTXentLoss(temperature=0.1)
         self.nn_replacer = NNmemoryBankModule(size=2 ** 16)
             
     def forward(self, x):
