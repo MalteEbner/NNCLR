@@ -1,9 +1,7 @@
 # This repo has been incorporated into the Lightly repo for self-supervised learning. 
-You find the NNCLR model including benchmarks there: https://github.com/lightly-ai/lightly
+You find the NNCLR model with code examples there: https://docs.lightly.ai/examples/nnclr.html
 
-Documentation of NNCLR with code examples: https://docs.lightly.ai/examples/nnclr.html
-
-Please create any issues in the Lightly repository. This repository is not maintained anymore.
+Please create any issues in the [Lightly repository](https://github.com/lightly-ai/lightly). This repository is not maintained anymore.
 
 
 # NNCLR
